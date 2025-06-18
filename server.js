@@ -18,7 +18,7 @@ const app = express();
 const httpServer = http.createServer(app); // ✅ Create HTTP server
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "https://frontend-quiz-ten.vercel.app/",
     methods: ["GET", "POST"],
     allowedHeaders: ['Content-Type', 'Authorization']
 
@@ -29,7 +29,7 @@ app.use(express.static(path.join(__dirname, "build")));
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://kartik4023:Kartik123@mediquiz.ovwzn.mongodb.net/myquizDB?retryWrites=true&w=majority&appName=Mediquiz";
 const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://frontend-quiz-ten.vercel.app/";
 
 app.use(express.json({ limit: "50mb" })); 
 app.use(bodyParser.json({ limit: "50mb" })); 
