@@ -18,12 +18,12 @@ const app = express();
 const httpServer = http.createServer(app); // ✅ Create HTTP server
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "https://frontend-quiz-ten.vercel.app/",
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     allowedHeaders: ['Content-Type', 'Authorization']
-
   },
 });
+
 app.use(express.static(path.join(__dirname, "build")));
 
 const PORT = process.env.PORT || 5000;
@@ -34,13 +34,23 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "https://frontend-quiz-ten.verc
 app.use(express.json({ limit: "50mb" })); 
 app.use(bodyParser.json({ limit: "50mb" })); 
 
-app.use(cors({ 
-  origin: FRONTEND_URL, 
+const allowedOrigins = [
+  "https://frontend-quiz-ten.vercel.app", // ✅ without slash
+  "https://frontend-quiz-ten.vercel.app/" // ✅ with slash
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 
 
 
@@ -401,10 +411,10 @@ mongoose
   })
   .then(() => {
     console.log("✅ MongoDB connected successfully");
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      // console.log(`📡 API available at http://localhost:${PORT}`);
-    });
+ httpServer.listen(PORT, () => {
+  console.log(`🚀 Server with Socket.IO running on port ${PORT}`);
+});
+
   })
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
