@@ -5,40 +5,33 @@ const bodyParser = require("body-parser");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const path = require("path");
-const { Server } = require('socket.io');
-const http = require('http');
+const { Server } = require("socket.io");
+const http = require("http");
+
+require("dotenv").config();
 
 const User = require(path.join(__dirname, "models", "User"));
 const Quiz = require(path.join(__dirname, "models", "Quiz"));
 
-
-require("dotenv").config();
-
 const app = express();
-const httpServer = http.createServer(app); // ✅ Create HTTP server
+const httpServer = http.createServer(app);
+
+// ✅ Define allowedOrigins BEFORE using it
+const allowedOrigins = [
+  "https://frontend-quiz-ten.vercel.app",
+  "https://frontend-quiz-ten.vercel.app/"
+];
+
+// ✅ Use allowedOrigins in socket.io
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  },
+    allowedHeaders: ["Content-Type", "Authorization"]
+  }
 });
 
-app.use(express.static(path.join(__dirname, "build")));
-
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://kartik4023:Kartik123@mediquiz.ovwzn.mongodb.net/myquizDB?retryWrites=true&w=majority&appName=Mediquiz";
-const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://frontend-quiz-ten.vercel.app/";
-
-app.use(express.json({ limit: "50mb" })); 
-app.use(bodyParser.json({ limit: "50mb" })); 
-
-const allowedOrigins = [
-  "https://frontend-quiz-ten.vercel.app", // ✅ without slash
-  "https://frontend-quiz-ten.vercel.app/" // ✅ with slash
-];
-
+// ✅ CORS Middleware
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -48,16 +41,19 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
+app.use(express.static(path.join(__dirname, "build")));
+app.use(express.json({ limit: "50mb" }));
+app.use(bodyParser.json({ limit: "50mb" }));
 
+const PORT = process.env.PORT || 5000;
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://kartik4023:Kartik123@mediquiz.ovwzn.mongodb.net/myquizDB?retryWrites=true&w=majority&appName=Mediquiz";
+const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 
-// ✅ Updated User Schema (Now Tracks Quiz Attempts)
-
-
-
+// ✅ Auth Middleware
 const authMiddleware = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -65,8 +61,8 @@ const authMiddleware = (req, res, next) => {
       return res.status(401).json({ error: "No token, authorization denied" });
     }
 
-    const token = authHeader.startsWith('Bearer ') 
-      ? authHeader.substring(7) 
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
       : authHeader;
 
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -78,9 +74,7 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-
-
-
+// ✅ API Endpoints
 app.get("/", (req, res) => {
   res.json({
     message: "Quiz API server is running",
@@ -100,21 +94,17 @@ app.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // 🚀 Check if username or email already exists
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       return res.status(400).json({ error: "Username or Email already exists." });
     }
 
-    // 🔒 Hash password before saving
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ Create new user
     const newUser = new User({
       username,
       email,
-      password: hashedPassword,
-      
+      password: hashedPassword
     });
 
     await newUser.save();
@@ -147,12 +137,11 @@ app.post("/login", async (req, res) => {
 
     console.log("✅ Login successful:", { userId: user._id });
 
-    // ✅ Generate JWT Token
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "7d" });
 
     res.status(200).json({
       message: "Login successful!",
-      token, // ✅ Send token
+      token,
       user: {
         _id: user._id,
         username: user.username,
@@ -164,6 +153,7 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
 app.get("/profile", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select("username email");
@@ -177,19 +167,9 @@ app.get("/profile", authMiddleware, async (req, res) => {
   }
 });
 
-
 app.get("/api/quizzes", authMiddleware, async (req, res) => {
   try {
-    // Get the creator ID from the authentication middleware
-    const creatorId = req.userId;
-    
-    console.log("Fetching quizzes for creator:", creatorId); // Debug log
-    
-    // Find only quizzes created by this user
-    const quizzes = await Quiz.find({ creator: creatorId });
-    
-    console.log("Found quizzes:", quizzes.length); // Debug log
-    
+    const quizzes = await Quiz.find({ creator: req.userId });
     res.json(quizzes);
   } catch (error) {
     console.error("Error fetching quizzes:", error);
@@ -210,34 +190,24 @@ app.get("/api/quizzes/:id", async (req, res) => {
   }
 });
 
-// ✅ Create a new quiz with image & audio support
-// Fix the '/api/quizzes' endpoint
 app.post("/api/quizzes", authMiddleware, async (req, res) => {
   try {
     const { title, description, image, audio, questions } = req.body;
-    
-    // Get the creator ID from the authentication middleware
-    const creatorId = req.userId;
-    
+
     if (!title || !questions || !questions.length) {
       return res.status(400).json({ message: "Title and questions are required!" });
     }
 
-    // Create and save the quiz with explicit creator field
     const newQuiz = new Quiz({
       title,
       description,
       image,
       audio,
       questions,
-      creator: creatorId // Make sure creator ID is properly set
+      creator: req.userId
     });
 
-    console.log("Creating quiz with creator:", creatorId); // Debug log
-    
     const savedQuiz = await newQuiz.save();
-    console.log("Saved quiz:", savedQuiz); // Debug log
-    
     res.status(201).json(savedQuiz);
   } catch (error) {
     console.error("Error creating quiz:", error);
@@ -245,7 +215,6 @@ app.post("/api/quizzes", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Delete a quiz
 app.delete("/api/quizzes/:id", async (req, res) => {
   try {
     const deletedQuiz = await Quiz.findByIdAndDelete(req.params.id);
@@ -258,132 +227,105 @@ app.delete("/api/quizzes/:id", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 app.post("/api/quizzes/:quizId/submit", authMiddleware, async (req, res) => {
   try {
-      const { quizId } = req.params;
-      const { answers } = req.body;
-      const userId = req.userId;
+    const { quizId } = req.params;
+    const { answers } = req.body;
+    const userId = req.userId;
 
-      const quiz = await Quiz.findById(quizId);
-      if (!quiz) {
-          return res.status(404).json({ error: "Quiz not found" });
+    const quiz = await Quiz.findById(quizId);
+    if (!quiz) {
+      return res.status(404).json({ error: "Quiz not found" });
+    }
+
+    let correctCount = 0;
+    quiz.questions.forEach((q, idx) => {
+      if (String(q.correctAnswer).trim() === String(answers[idx]).trim()) {
+        correctCount++;
       }
+    });
 
-      let correctCount = 0;
-      quiz.questions.forEach((q, idx) => {
-          if (String(q.correctAnswer).trim() === String(answers[idx]).trim()) {
-              correctCount++;
-          }
-      });
+    await User.findByIdAndUpdate(
+      userId,
+      { $inc: { correctAnswer: correctCount } },
+      { new: true }
+    );
 
-      // ✅ Ensure CorrectAnswer is updated properly
-      const updatedUser = await User.findByIdAndUpdate(
-          userId,
-          { $inc: { correctAnswer: correctCount } },
-          { new: true }  // ✅ Ensures updated value is returned
-      );
+    await Quiz.findByIdAndUpdate(
+      quizId,
+      { $push: { results: { userId: userId, score: correctCount } } }
+    );
 
-      await Quiz.findByIdAndUpdate(
-          quizId,
-          { $push: { results: { userId: userId, score: correctCount } } }
-      );
+    setTimeout(async () => {
+      const updatedLeaderboard = await User.find()
+        .sort({ correctAnswer: -1 })
+        .select("username correctAnswer");
 
-      // ✅ Delay to Ensure DB update is reflected
-      setTimeout(async () => {
-          const updatedLeaderboard = await User.find()
-              .sort({ correctAnswer: -1 })
-              .select("username correctAnswer");
+      io.emit("leaderboardUpdated", updatedLeaderboard);
+    }, 500);
 
-          io.emit("leaderboardUpdated", updatedLeaderboard);
-      }, 500); // ✅ 500ms delay
-
-      res.status(200).json({ message: "Quiz submitted!", correctAnswers: correctCount });
+    res.status(200).json({ message: "Quiz submitted!", correctAnswers: correctCount });
   } catch (error) {
-      console.error("Error submitting quiz:", error);
-      res.status(500).json({ error: "Internal server error" });
+    console.error("Error submitting quiz:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
-});
-
-
-
-
-
-
-io.on("connection", (socket) => {
-    console.log("🔗 New client connected:", socket.id);
-
-    // Send initial leaderboard when a user connects
-    getLeaderboard().then((leaderboard) => {
-        socket.emit("leaderboardUpdated", leaderboard);
-    });
-
-    socket.on("disconnect", () => {
-        console.log("❌ Client disconnected:", socket.id);
-    });
 });
 
 app.post("/submit-quiz", async (req, res) => {
   try {
-      const { quizId, userId, answers } = req.body;
+    const { quizId, userId, answers } = req.body;
+    const quiz = await Quiz.findById(quizId);
+    if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
-      // Find the quiz
-      const quiz = await Quiz.findById(quizId);
-      if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+    let correctCount = 0;
+    quiz.questions.forEach((q, index) => {
+      if (answers[index] === q.correctAnswer) {
+        correctCount++;
+      }
+    });
 
-      // Calculate the correct answers
-      let correctCount = 0;
-      quiz.questions.forEach((q, index) => {
-          if (answers[index] === q.correctAnswer) {
-              correctCount++;
-          }
-      });
+    await Quiz.findByIdAndUpdate(
+      quizId,
+      { $push: { results: { userId, score: correctCount } } },
+      { new: true }
+    );
 
-      // ✅ Save the result in the Quiz model under `results` array
-      await Quiz.findByIdAndUpdate(
-          quizId,
-          { $push: { results: { userId, score: correctCount } } },
-          { new: true }
-      );
+    await User.findByIdAndUpdate(userId, { $inc: { correctAnswer: correctCount } });
 
-      // ✅ Update the User's correct answer count
-      await User.findByIdAndUpdate(userId, { $inc: { correctAnswer: correctCount } });
-
-      res.json({ message: "Quiz submitted successfully", correctCount });
+    res.json({ message: "Quiz submitted successfully", correctCount });
   } catch (error) {
-      console.error("Error submitting quiz:", error);
-      res.status(500).json({ error: "Server error" });
+    console.error("Error submitting quiz:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
 app.get("/api/leaderboard", async (req, res) => {
   try {
-    // Fetch users sorted by correctAnswer in descending order
     const users = await User.find()
-      .sort({ correctAnswer: -1 }) // Highest score first
+      .sort({ correctAnswer: -1 })
       .select("username correctAnswer");
 
     let rank = 1;
     let previousScore = null;
     let sameRankCount = 0;
 
-    // Assign ranks
-    const leaderboard = users.map((user, index) => {
+    const leaderboard = users.map((user) => {
       if (user.correctAnswer === previousScore) {
         sameRankCount++;
       } else {
-        rank += sameRankCount; // Adjust for same rank users
-        sameRankCount = 1; // Reset for new rank count
+        rank += sameRankCount;
+        sameRankCount = 1;
       }
 
       previousScore = user.correctAnswer;
 
       return {
-        rank, // Assigned Rank
-        username: user.username,
+        rank,
+        username: user.username
       };
     });
 
-    console.log("Leaderboard with ranks:", leaderboard);
     res.status(200).json(leaderboard);
   } catch (error) {
     console.error("Error fetching leaderboard:", error);
@@ -391,36 +333,46 @@ app.get("/api/leaderboard", async (req, res) => {
   }
 });
 
-
 app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-});
-app.get("/", (req, res) => {
-  res.send("Backend is running!");
+  res.json({ status: "ok" });
 });
 
+// ✅ Socket.IO Connection
+const getLeaderboard = async () => {
+  return await User.find()
+    .sort({ correctAnswer: -1 })
+    .select("username correctAnswer");
+};
 
+io.on("connection", (socket) => {
+  console.log("🔗 New client connected:", socket.id);
+  getLeaderboard().then((leaderboard) => {
+    socket.emit("leaderboardUpdated", leaderboard);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ Client disconnected:", socket.id);
+  });
+});
+
+// ✅ MongoDB Connection and Server Start
 console.log("Attempting to connect to MongoDB...");
 mongoose.set("debug", true);
 mongoose.set("strictQuery", false);
-mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    // serverSelectionTimeoutMS: 10000
-  })
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
   .then(() => {
     console.log("✅ MongoDB connected successfully");
- httpServer.listen(PORT, () => {
-  console.log(`🚀 Server with Socket.IO running on port ${PORT}`);
-});
-
+    httpServer.listen(PORT, () => {
+      console.log(`🚀 Server with Socket.IO running on port ${PORT}`);
+    });
   })
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
   });
-  ///////////
 
 module.exports = app;
-
